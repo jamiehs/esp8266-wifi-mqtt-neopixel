@@ -8,15 +8,10 @@
 #include <ArduinoJson.h>         // https://github.com/bblanchon/ArduinoJson
 #include <FastLED.h>
 
-#define MOTION_PIN 14
-#define DHT11_PIN 12
-
 #define LED_PIN     2
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2812B
 #define NUM_LEDS    60 // These take roughly 2 amps at full white for 60
-#define UPDATES_PER_SECOND 120
-#define MIN_BRIGHTNESS 38
 
 #define MQTT_STATE_ON_PAYLOAD   "ON"
 #define MQTT_STATE_OFF_PAYLOAD  "OFF"
