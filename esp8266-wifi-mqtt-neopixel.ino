@@ -8,19 +8,16 @@
 #include <ArduinoJson.h>         // https://github.com/bblanchon/ArduinoJson
 #include <FastLED.h>
 
-#define MOTION_PIN 14
-#define DHT11_PIN 12
-
 #define LED_PIN     2
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2812B
 #define NUM_LEDS    60 // These take roughly 2 amps at full white for 60
-#define UPDATES_PER_SECOND 120
-#define MIN_BRIGHTNESS 38
 
 #define MQTT_STATE_ON_PAYLOAD   "ON"
 #define MQTT_STATE_OFF_PAYLOAD  "OFF"
 
+#define BROADCAST_INTERVAL (1000UL * 60)
+unsigned long broadcastRollTime = millis() + BROADCAST_INTERVAL;
 
 CRGB leds[NUM_LEDS];
 
@@ -46,8 +43,8 @@ boolean has_motion = false;
 bool shouldSaveConfig = false;
 
 
-StaticJsonBuffer<256> staticJsonBuffer;
-char jsonBuffer[256] = {0};
+StaticJsonBuffer<512> staticJsonBuffer;
+char jsonBuffer[512] = {0};
 
 
 //callback notifying us of the need to save config
@@ -125,6 +122,21 @@ void mqttCallback(char* incomingTopic, byte* payload, unsigned int length) {
 
 }
 
+void sendConfig() {
+  DynamicJsonBuffer dynamicJsonBuffer;
+  JsonObject& root = dynamicJsonBuffer.createObject();
+  root["name"] = friendly_name;
+  root["platform"] = "mqtt_json";
+  root["state_topic"] = topic + "/state";
+  root["command_topic"] = topic + "/set";
+  root["brightness"] = true;
+  root["rgb"] = true;
+  root["optimistic"] = true;
+  root.printTo(jsonBuffer, sizeof(jsonBuffer));
+  Serial.println(jsonBuffer);
+  mqttClient.publish(String(topic + "/config").c_str(), jsonBuffer, true);
+}
+
 
 void sendState() {
   DynamicJsonBuffer dynamicJsonBuffer;
@@ -139,7 +151,7 @@ void sendState() {
 
   Serial.println(jsonBuffer);
 
-  mqttClient.publish(String(topic + "/state").c_str(), String(jsonBuffer).c_str(), true);
+  mqttClient.publish(String(topic + "/state").c_str(), jsonBuffer, true);
 }
 
 void reconnect() {
@@ -156,17 +168,8 @@ void reconnect() {
       // Say Hello
       mqttClient.publish(String(topic + "/status").c_str(), String("BOOTED").c_str(), true);
 
-
-      JsonObject& root = staticJsonBuffer.createObject();
-      root["name"] = friendly_name;
-      root["platform"] = "mqtt_json";
-      root["state_topic"] = topic + "/state";
-      root["command_topic"] = topic + "/set";
-      root["brightness"] = true;
-      root["rgb"] = true;
-      root.printTo(jsonBuffer, sizeof(jsonBuffer));
-      Serial.println(jsonBuffer);
-      mqttClient.publish(String(topic + "/config").c_str(), String(jsonBuffer).c_str(), true);
+      sendConfig();
+      sendState();
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqttClient.state());
@@ -228,7 +231,7 @@ void setup() {
 
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
-  // id/name placeholder/prompt default length
+  // id/name placeholder/prompt default lengtha
   WiFiManagerParameter custom_device_slug("device_slug", "Device Slug", device_slug, 40);
   WiFiManagerParameter custom_friendly_name("name", "Name", friendly_name, 40);
   WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server, 40);
@@ -308,6 +311,12 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
 
+  if((long)(millis() - broadcastRollTime) >= 0) {
+    sendConfig();
+    sendState();
+    broadcastRollTime += BROADCAST_INTERVAL;
+  }
+
   // Flash button being held
   if(digitalRead(0) == 0) {
     Serial.println("Attempting to clear flash...");
@@ -341,7 +350,6 @@ void fadeBetween(int oldR, int oldG, int oldB, int newR, int newG, int newB) {
   r = newR;
   g = newG;
   b = newB;
-  sendState();
 
   // Calculate how how much each colour needs to change on each step
   const float
@@ -376,7 +384,6 @@ void fadeBetween(int oldR, int oldG, int oldB, int newR, int newG, int newB) {
 
 void fadeBrightness(int oldBrightness, int newBrightness) {
   brightness = newBrightness;
-  sendState();
 
   // Guard against division by zero
   int numSteps = 300;
