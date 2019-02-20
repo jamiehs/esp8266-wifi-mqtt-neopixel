@@ -126,12 +126,10 @@ void sendConfig() {
   DynamicJsonBuffer dynamicJsonBuffer;
   JsonObject& root = dynamicJsonBuffer.createObject();
   root["name"] = friendly_name;
-  root["platform"] = "mqtt_json";
   root["state_topic"] = topic + "/state";
   root["command_topic"] = topic + "/set";
   root["brightness"] = true;
   root["rgb"] = true;
-  root["optimistic"] = true;
   root.printTo(jsonBuffer, sizeof(jsonBuffer));
   Serial.println(jsonBuffer);
   mqttClient.publish(String(topic + "/config").c_str(), jsonBuffer, true);
